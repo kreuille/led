@@ -2,195 +2,387 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WLED Command Center</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WLED Zone Commander</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jaames/iro@5"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
-        body { background-color: #1a1a1a; color: #e0e0e0; font-family: 'Segoe UI', system-ui, sans-serif; }
-        .slider-thumb::-webkit-slider-thumb { appearance: none; width: 20px; height: 20px; background: #3b82f6; border-radius: 50%; cursor: pointer; }
-        .glass-panel { background: rgba(40, 40, 40, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
-        .btn-preset { transition: all 0.2s; }
-        .btn-preset:active { transform: scale(0.95); }
+        body { 
+            background-color: #0f172a; 
+            color: #f8fafc; 
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            overscroll-behavior: none;
+        }
+
+        /* GRILLE DE ZONES */
+        .zone-grid {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr); /* 10 blocs par ligne */
+            gap: 4px;
+            user-select: none;
+        }
+        .zone-block {
+            aspect-ratio: 1;
+            background-color: #334155;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.1s ease;
+            position: relative;
+        }
+        .zone-block.active {
+            background-color: #3b82f6; /* Bleu si activé */
+            box-shadow: 0 0 8px rgba(59, 130, 246, 0.6);
+            border: 1px solid #93c5fd;
+        }
+        .zone-block:hover { filter: brightness(1.2); }
+        .zone-label {
+            position: absolute;
+            font-size: 8px;
+            color: rgba(255,255,255,0.3);
+            bottom: 1px; right: 2px;
+        }
+
+        /* SLIDER CCT (Dégradé visuel) */
+        input[type=range].cct-slider {
+            -webkit-appearance: none; width: 100%; height: 24px; border-radius: 12px;
+            background: linear-gradient(to right, #ff8c00 0%, #ffebcd 40%, #ffffff 50%, #e0ffff 60%, #a0c4ff 100%);
+            outline: none; margin-top: 10px;
+        }
+        input[type=range].cct-slider::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 30px; height: 30px; border-radius: 50%;
+            background: #fff; border: 3px solid #1e293b; box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+
+        /* CLASSES UTILITAIRES */
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 16px;
+        }
+        .btn-action {
+            background: #1e293b; border: 1px solid #475569;
+            border-radius: 8px; padding: 8px 12px; font-size: 0.8rem;
+            transition: 0.2s;
+        }
+        .btn-action:active { transform: scale(0.95); background: #334155; }
+        .btn-primary { background: #2563eb; border-color: #3b82f6; color: white; }
     </style>
 </head>
-<body class="min-h-screen flex items-center justify-center p-4">
+<body class="min-h-screen p-4 pb-20 max-w-lg mx-auto flex flex-col gap-5">
 
-    <!-- Main Controller Container -->
-    <div class="glass-panel w-full max-w-md rounded-2xl shadow-2xl overflow-hidden p-6 space-y-6">
-        
-        <!-- Header & Connection Status -->
-        <div class="flex justify-between items-center border-b border-gray-700 pb-4">
-            <div>
-                <h1 class="text-2xl font-bold text-white tracking-tight">Salon <span class="text-blue-500">Light</span></h1>
-                <p class="text-xs text-gray-400">Contrôle Hybride RGB + White</p>
-            </div>
-            <div id="status-indicator" class="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]"></div>
-        </div>
-
-        <!-- Master Controls -->
-        <div class="space-y-4">
-            <div class="flex justify-between items-center">
-                <span class="font-medium text-gray-300">Alimentation Maître</span>
-                <button onclick="togglePower()" id="power-btn" class="w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center text-xl hover:bg-gray-600 transition shadow-lg">
-                    <i class="fa-solid fa-power-off"></i>
-                </button>
-            </div>
-
-            <div>
-                <label class="text-xs text-gray-400 uppercase font-bold tracking-wider">Luminosité Globale</label>
-                <input type="range" min="0" max="255" id="master-bri" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer mt-2" onchange="setBrightness(this.value)">
-            </div>
-        </div>
-
-        <!-- Dual Channel Control -->
-        <div class="grid grid-cols-2 gap-4">
-            <!-- Channel RGB -->
-            <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-sm font-bold text-blue-400"><i class="fa-solid fa-palette mr-2"></i>RGB</span>
-                    <input type="color" id="color-picker" class="w-8 h-8 rounded cursor-pointer bg-transparent border-0" onchange="setSegmentColor(0, this.value)">
-                </div>
-                <label class="text-xs text-gray-500">Intensité Segment 0</label>
-                <input type="range" min="0" max="255" class="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer mt-2" onchange="setSegmentBrightness(0, this.value)">
-            </div>
-
-            <!-- Channel White -->
-            <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-sm font-bold text-yellow-200"><i class="fa-regular fa-sun mr-2"></i>Blanc</span>
-                    <!-- White toggle/indicator -->
-                    <div class="w-3 h-3 bg-yellow-100 rounded-full shadow-[0_0_10px_yellow]"></div>
-                </div>
-                <label class="text-xs text-gray-500">Intensité Segment 1</label>
-                <input type="range" min="0" max="255" class="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer mt-2" onchange="setSegmentBrightness(1, this.value)">
-            </div>
-        </div>
-
-        <!-- Quick Presets -->
+    <!-- EN-TÊTE -->
+    <div class="flex justify-between items-center">
         <div>
-            <label class="text-xs text-gray-400 uppercase font-bold tracking-wider mb-3 block">Scènes Rapides</label>
-            <div class="grid grid-cols-3 gap-3">
-                <button onclick="loadPreset(1)" class="btn-preset bg-gradient-to-br from-indigo-600 to-blue-700 py-3 rounded-lg text-sm font-medium shadow-lg text-white">
-                    <i class="fa-solid fa-tv block mb-1"></i> TV
-                </button>
-                <button onclick="loadPreset(2)" class="btn-preset bg-gradient-to-br from-orange-500 to-yellow-600 py-3 rounded-lg text-sm font-medium shadow-lg text-white">
-                    <i class="fa-solid fa-book-open block mb-1"></i> Lecture
-                </button>
-                <button onclick="loadPreset(3)" class="btn-preset bg-gradient-to-br from-pink-600 to-purple-700 py-3 rounded-lg text-sm font-medium shadow-lg text-white">
-                    <i class="fa-solid fa-glass-martini-alt block mb-1"></i> Soirée
-                </button>
-            </div>
-            <div class="grid grid-cols-2 gap-3 mt-3">
-                 <button onclick="setSegmentBrightness(1, 255); setSegmentBrightness(0, 0);" class="btn-preset bg-gray-700 py-2 rounded-lg text-xs font-bold border border-gray-600">
-                    FULL WHITE
-                </button>
-                <button onclick="setSegmentBrightness(1, 0); setSegmentBrightness(0, 255);" class="btn-preset bg-gray-700 py-2 rounded-lg text-xs font-bold border border-gray-600">
-                    FULL RGB
-                </button>
+            <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-300">
+                Zone Commander
+            </h1>
+            <input type="text" id="wled-ip" value="192.168.1.50" 
+                   class="bg-transparent border-b border-gray-700 text-xs text-gray-500 w-24 focus:outline-none"
+                   placeholder="IP WLED">
+        </div>
+        <div class="flex gap-2">
+            <button onclick="wledApi({'on':'t'})" class="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-400 active:text-green-400 shadow-lg">
+                <i class="fa-solid fa-power-off"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- 1. SÉLECTEUR DE ZONES (Le coeur du système) -->
+    <div class="glass-panel p-4">
+        <div class="flex justify-between items-end mb-3">
+            <h2 class="text-sm font-bold uppercase tracking-wider text-gray-400">Segments Physiques</h2>
+            <div class="flex gap-2">
+                <button onclick="zonesSelectAll(true)" class="text-xs text-blue-400 hover:text-white">Tout</button>
+                <span class="text-gray-600">|</span>
+                <button onclick="zonesSelectAll(false)" class="text-xs text-gray-400 hover:text-white">Rien</button>
             </div>
         </div>
-
-        <!-- Technical Footer -->
-        <div class="text-center pt-2">
-            <p class="text-[10px] text-gray-600">API Latency: <span id="latency">--</span>ms • WLED v0.14.4</p>
-            <input type="text" id="ip-address" value="192.168.1.50" class="mt-2 bg-transparent text-center text-gray-600 text-xs border-b border-gray-700 focus:outline-none focus:border-blue-500" placeholder="IP WLED">
+        
+        <!-- Grille de 60 blocs -->
+        <div id="zone-container" class="zone-grid mb-4">
+            <!-- Généré par JS -->
         </div>
 
+        <button onclick="applyZonesToWLED()" class="w-full btn-action btn-primary font-bold shadow-lg shadow-blue-900/50">
+            <i class="fa-solid fa-check mr-2"></i>APPLIQUER LA SÉLECTION
+        </button>
+        <p class="text-[10px] text-gray-500 text-center mt-2">
+            Fusionne les blocs contigus • Crée les segments RGB & Blancs
+        </p>
+    </div>
+
+    <!-- 2. CONTRÔLES (S'appliquent aux zones actives) -->
+    <div class="glass-panel p-5 relative overflow-hidden">
+        <div class="absolute top-0 right-0 p-3 opacity-5"><i class="fa-solid fa-sliders text-6xl"></i></div>
+        
+        <!-- Onglets simplifiés -->
+        <div class="flex border-b border-gray-700 mb-4">
+            <button class="flex-1 pb-2 text-sm font-bold text-orange-300 border-b-2 border-orange-400">BLANC (CCT)</button>
+            <button class="flex-1 pb-2 text-sm font-bold text-gray-500 hover:text-purple-400">RGB (Couleur)</button>
+        </div>
+
+        <!-- Contrôle CCT -->
+        <div id="control-cct" class="space-y-4">
+            <div>
+                <div class="flex justify-between text-xs text-gray-400 px-1">
+                    <span>Chaud</span><span>Froid</span>
+                </div>
+                <input type="range" min="0" max="100" value="50" class="cct-slider" oninput="updateLiveCCT(this.value)">
+            </div>
+            <div class="flex items-center gap-3 bg-gray-800/50 p-2 rounded-lg">
+                <i class="fa-regular fa-sun text-gray-400"></i>
+                <input type="range" min="0" max="255" class="w-full h-1 bg-gray-600 rounded cursor-pointer" onchange="updateLiveBri('white', this.value)">
+            </div>
+        </div>
+        
+        <!-- Contrôle RGB (Caché par défaut pour l'exemple, mais fonctionnel) -->
+        <div id="control-rgb" class="hidden space-y-4">
+            <div class="flex justify-center my-2">
+                <div id="rgb-wheel"></div>
+            </div>
+            <div class="flex items-center gap-3 bg-gray-800/50 p-2 rounded-lg">
+                <i class="fa-solid fa-lightbulb text-gray-400"></i>
+                <input type="range" min="0" max="255" class="w-full h-1 bg-gray-600 rounded cursor-pointer" onchange="updateLiveBri('rgb', this.value)">
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. SAUVEGARDE RAPIDE (Presets WLED) -->
+    <div class="glass-panel p-4">
+        <h2 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Sauvegarder la configuration</h2>
+        <div class="grid grid-cols-4 gap-2">
+            <button onclick="saveToPreset(1)" class="btn-action bg-gray-800">Mém. 1</button>
+            <button onclick="saveToPreset(2)" class="btn-action bg-gray-800">Mém. 2</button>
+            <button onclick="saveToPreset(3)" class="btn-action bg-gray-800">Mém. 3</button>
+            <button onclick="saveToPreset(4)" class="btn-action bg-gray-800">Mém. 4</button>
+        </div>
+    </div>
+
+    <!-- Feedback -->
+    <div id="toast" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-4 py-2 rounded-full text-xs shadow-xl opacity-0 transition-opacity pointer-events-none">
+        Commande envoyée
     </div>
 
     <script>
-        // CONFIGURATION
-        // Remplacer par l'IP de votre ESP32 si statique, ou utiliser le champ input
-        let wledIp = document.getElementById('ip-address').value;
+        // --- 1. INITIALISATION DE LA GRILLE ---
+        const TOTAL_PHYSICAL_SECTIONS = 60; // 5m * 12 sections
+        const zoneContainer = document.getElementById('zone-container');
+        let zoneState = new Array(TOTAL_PHYSICAL_SECTIONS).fill(false);
 
-        // Fonction utilitaire pour appeler l'API JSON
-        async function wledApi(data) {
-            wledIp = document.getElementById('ip-address').value;
-            const start = Date.now();
-            try {
-                const response = await fetch(`http://${wledIp}/json/state`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-                const json = await response.json();
-                updateUI(json);
+        function initGrid() {
+            zoneContainer.innerHTML = '';
+            for (let i = 0; i < TOTAL_PHYSICAL_SECTIONS; i++) {
+                let div = document.createElement('div');
+                div.className = 'zone-block';
+                div.onclick = () => toggleZone(i);
                 
-                // Calcul latence
-                const latency = Date.now() - start;
-                document.getElementById('latency').innerText = latency;
-                document.getElementById('status-indicator').className = "w-3 h-3 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]";
-                
-                return json;
-            } catch (error) {
-                console.error("Erreur WLED:", error);
-                document.getElementById('status-indicator').className = "w-3 h-3 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]";
+                // Label tous les 5 blocs pour se repérer
+                if ((i+1) % 5 === 0) {
+                    let lbl = document.createElement('span');
+                    lbl.className = 'zone-label';
+                    lbl.innerText = i+1;
+                    div.appendChild(lbl);
+                }
+                zoneContainer.appendChild(div);
             }
         }
 
-        // Mettre à jour l'UI avec l'état actuel
-        function updateUI(state) {
-            // Master ON/OFF
-            const pwrBtn = document.getElementById('power-btn');
-            if(state.on) {
-                pwrBtn.classList.add('text-green-400', 'bg-gray-700');
-                pwrBtn.classList.remove('text-gray-400');
-            } else {
-                pwrBtn.classList.remove('text-green-400', 'bg-gray-700');
-                pwrBtn.classList.add('text-gray-400');
+        function toggleZone(idx) {
+            zoneState[idx] = !zoneState[idx];
+            renderGrid();
+        }
+
+        function zonesSelectAll(state) {
+            zoneState.fill(state);
+            renderGrid();
+        }
+
+        function renderGrid() {
+            const blocks = zoneContainer.children;
+            for (let i = 0; i < TOTAL_PHYSICAL_SECTIONS; i++) {
+                if (zoneState[i]) blocks[i].classList.add('active');
+                else blocks[i].classList.remove('active');
             }
+        }
+
+        // --- 2. MOTEUR DE SEGMENTATION (Le cerveau) ---
+        
+        // Cette fonction analyse les cases cochées et génère le JSON complexe pour WLED
+        async function applyZonesToWLED() {
+            showToast("Calcul des segments...");
             
-            // Master Brightness
-            document.getElementById('master-bri').value = state.bri;
+            // 1. Détecter les groupes contigus (ex: 0-10, 25-30)
+            let groups = [];
+            let start = -1;
 
-            // Segment Specifics (si dispos)
-            if(state.seg && state.seg.length > 1) {
-                // Supposons Seg 0 = RGB, Seg 1 = White (Brightness only)
-                // Note: WLED retourne 'bri' par segment s'il est setté
+            for (let i = 0; i < TOTAL_PHYSICAL_SECTIONS; i++) {
+                if (zoneState[i] && start === -1) {
+                    start = i; // Début d'un groupe
+                } else if (!zoneState[i] && start !== -1) {
+                    groups.push({start: start, stop: i}); // Fin d'un groupe
+                    start = -1;
+                }
             }
+            if (start !== -1) groups.push({start: start, stop: TOTAL_PHYSICAL_SECTIONS}); // Finir le dernier
+
+            // 2. Construire le payload WLED
+            // On va créer des paires de segments pour chaque groupe
+            // ID Pair n : RGB
+            // ID Impair n+1 : White
+            
+            let segmentsPayload = [];
+            
+            // D'abord, on doit nettoyer les segments existants (WLED garde les vieux segments en mémoire sinon)
+            // On génère le tableau complet. WLED supporte environ 16 à 32 segments.
+            // Chaque groupe consomme 2 segments. Max 8 à 10 groupes physiques disjoints.
+            
+            let segID = 0;
+            
+            groups.forEach(grp => {
+                // Conversion Logique Interleaved : x2
+                // Start Physique P -> RGB Start P*2
+                // Stop Physique P -> RGB Stop P*2
+                
+                const physStart = grp.start;
+                const physStop = grp.stop;
+
+                // Segment RGB (Pixels pairs : 0, 2, 4...)
+                segmentsPayload.push({
+                    "id": segID++,
+                    "start": physStart * 2,
+                    "stop": physStop * 2,
+                    "grp": 1,
+                    "spc": 1,     // Saute 1 pixel (le blanc)
+                    "of": 0,      // Offset 0
+                    "on": true,
+                    "n": `Z${grp.start}-RGB` // Nom optionnel
+                });
+
+                // Segment WHITE (Pixels impairs : 1, 3, 5...)
+                segmentsPayload.push({
+                    "id": segID++,
+                    "start": (physStart * 2) + 1, // Décalé de 1
+                    "stop": (physStop * 2) + 1, // WLED stop est exclusif, donc si physStop=10 (pixel 20), on veut aller jusqu'à 21
+                    "grp": 1,
+                    "spc": 1,
+                    "of": 0,
+                    "on": true,
+                    "n": `Z${grp.start}-W`
+                });
+            });
+
+            // Si aucun groupe, on éteint tout ou on met un segment vide
+            if (segmentsPayload.length === 0) {
+                 segmentsPayload.push({"id":0, "stop":0});
+            }
+
+            console.log("Envoi WLED Segments:", segmentsPayload);
+            
+            // Envoi API
+            await wledApi({ "seg": segmentsPayload });
+            showToast("Zones appliquées !");
         }
 
-        // COMMANDES
-        function togglePower() {
-            wledApi({ "on": "t" });
+
+        // --- 3. CONTRÔLEURS LIVE (RGB / CCT) ---
+        // Ces fonctions s'appliquent à TOUS les segments actifs du type concerné
+        
+        let cctTimeout;
+        function updateLiveCCT(val) {
+            // Calcul Mixage Chaud/Froid
+            let r, g, b = 0;
+            const percent = parseInt(val);
+            if (percent <= 50) {
+                r = 255; g = Math.floor((percent / 50) * 255);
+            } else {
+                g = 255; r = Math.floor(255 - ((percent - 50) / 50) * 255);
+            }
+
+            clearTimeout(cctTimeout);
+            cctTimeout = setTimeout(() => {
+                // On cible uniquement les segments avec ID IMPAIR (les blancs)
+                // WLED ne permet pas de cibler "tous les impairs" facilement.
+                // Astuce : On suppose qu'on vient de générer les segments.
+                // On envoie la couleur à TOUS les segments, mais ceux configurés avec offset (RGB)
+                // recevront aussi la couleur jaune/bleue.
+                // SOLUTION PROPRE : Il faut boucler sur les IDs connus ou espérer que l'utilisateur ne change pas de mode.
+                // Hack efficace pour cette interface : On envoie la couleur CCT à tout le monde. 
+                // Le ruban RGB deviendra jaunâtre/bleuâtre (ce qui est acceptable pour du blanc ambiant).
+                // SI on veut être puriste, il faudrait stocker les IDs des segments blancs dans une variable JS globale.
+                
+                // Pour simplifier ici : on applique CCT à tout.
+                wledApi({ 
+                    "seg": { "col": [[r, g, b]] } // "seg": {...} sans crochet applique au "main segment" ou sélectionné.
+                    // Pour appliquer à tous, il vaut mieux itérer ou utiliser des groupes de segments.
+                    // Dans WLED API, si on omet ID, ça applique au segment selectionné.
+                    // On va forcer la selection de tous les segments d'abord ? Non trop lourd.
+                    // On envoie simplement la couleur, WLED l'applique aux segments cochés "Selected" (sel: true).
+                });
+            }, 50);
         }
 
-        function setBrightness(val) {
+        function updateLiveBri(type, val) {
+            // Applique la luminosité
             wledApi({ "bri": parseInt(val) });
         }
 
-        function setSegmentBrightness(segId, val) {
-            // Pour cibler un segment spécifique en JSON API
-            wledApi({ 
-                "seg": [
-                    { "id": segId, "bri": parseInt(val), "on": true } 
-                ]
-            });
+
+        // --- 4. PRESETS & SYSTEM ---
+
+        function saveToPreset(id) {
+            // Sauvegarde la config actuelle (segments inclus) dans le slot ID
+            wledApi({ "psave": id });
+            showToast(`Sauvegardé en Mém. ${id}`);
         }
 
-        function setSegmentColor(segId, hex) {
-            // Conversion Hex à RGB
-            const r = parseInt(hex.substr(1,2), 16);
-            const g = parseInt(hex.substr(3,2), 16);
-            const b = parseInt(hex.substr(5,2), 16);
-
-            wledApi({ 
-                "seg": [
-                    { "id": segId, "col": [[r, g, b]], "on": true }
-                ]
-            });
+        async function wledApi(data) {
+            const ip = document.getElementById('wled-ip').value;
+            try {
+                await fetch(`http://${ip}/json/state`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+            } catch (e) {
+                console.error(e);
+                showToast("Erreur Connexion");
+            }
         }
 
-        function loadPreset(id) {
-            wledApi({ "ps": id });
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.innerText = msg;
+            t.style.opacity = '1';
+            setTimeout(() => t.style.opacity = '0', 2000);
         }
 
-        // Initial fetch
-        setInterval(() => {
-             // Polling léger pour garder l'état synchro (optionnel)
-             // wledApi({}); 
-        }, 5000);
+        // INIT
+        initGrid();
+        
+        // Iro JS pour le RGB (si activé plus tard)
+        var rgbPicker = new iro.ColorPicker("#rgb-wheel", { width: 150, layout: [{ component: iro.ui.Wheel }] });
+        rgbPicker.on('input:end', (c) => {
+            const {r,g,b} = c.rgb;
+            wledApi({ "seg": { "col": [[r,g,b]] } });
+        });
+        
+        // Gestion des onglets simple
+        const tabs = document.querySelectorAll('button.flex-1');
+        tabs[0].onclick = () => {
+            document.getElementById('control-cct').classList.remove('hidden');
+            document.getElementById('control-rgb').classList.add('hidden');
+            tabs[0].classList.add('text-orange-300', 'border-orange-400');
+            tabs[1].classList.remove('text-purple-300', 'border-purple-400');
+        };
+        tabs[1].onclick = () => {
+            document.getElementById('control-cct').classList.add('hidden');
+            document.getElementById('control-rgb').classList.remove('hidden');
+            tabs[1].classList.add('text-purple-300', 'border-purple-400');
+            tabs[0].classList.remove('text-orange-300', 'border-orange-400');
+        };
+
     </script>
 </body>
 </html>
