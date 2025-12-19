@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WLED Ultimate</title>
+    <title>WLED Commander Stable</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@jaames/iro@5"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
@@ -14,7 +14,7 @@
             font-family: 'Segoe UI', system-ui, sans-serif;
             overscroll-behavior: none;
             user-select: none;
-            padding-bottom: 80px; /* Espace pour le bouton master */
+            padding-bottom: 80px;
         }
 
         /* --- STYLES GRILLE ZONES --- */
@@ -34,6 +34,7 @@
         .zone-block.active {
             background-color: #3b82f6;
             box-shadow: 0 0 5px rgba(59, 130, 246, 0.5);
+            border: 1px solid #93c5fd;
         }
         .zone-label {
             position: absolute; bottom: 1px; right: 1px;
@@ -85,7 +86,7 @@
         <!-- OPTIONS BAR -->
         <div class="flex items-center justify-between bg-gray-800/50 rounded-xl p-2 px-3 border border-white/5">
             <span class="text-xs text-gray-300 flex items-center gap-2">
-                <i class="fa-solid fa-link"></i> Mode Combiné
+                <i class="fa-solid fa-link"></i> Mode Combiné (Fusion)
             </span>
             <div class="relative inline-block w-8 align-middle select-none">
                 <input type="checkbox" id="fusion-toggle" class="toggle-checkbox absolute block w-4 h-4 rounded-full bg-white border-4 appearance-none cursor-pointer transition-all duration-300 ease-in-out left-0 top-0"/>
@@ -101,7 +102,7 @@
             <i class="fa-solid fa-chevron-down text-gray-500 text-xs transition-transform" id="zone-chevron"></i>
         </div>
         
-        <div id="zone-content" class="hidden"> <!-- Caché par défaut pour gagner de la place -->
+        <div id="zone-content" class="hidden">
             <div class="flex justify-end gap-2 mb-2 text-[10px]">
                 <button onclick="zonesSelectAll(true)" class="text-blue-400">Tout</button>
                 <button onclick="zonesSelectAll(false)" class="text-gray-400">Rien</button>
@@ -109,14 +110,14 @@
             
             <div id="zone-grid" class="zone-grid"></div>
 
-            <button onclick="applyZones()" class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-2 rounded shadow-lg transition-colors">
-                APPLIQUER LA CONFIGURATION
+            <button onclick="applyZones()" class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-3 rounded shadow-lg transition-colors border border-blue-400/30">
+                <i class="fa-solid fa-rotate-right mr-1"></i> APPLIQUER & NETTOYER
             </button>
-            <p class="text-[9px] text-gray-500 text-center mt-2">Crée les segments RGB/Blanc entrelacés automatiquement.</p>
+            <p class="text-[9px] text-gray-500 text-center mt-2">Réinitialise les segments et applique la nouvelle sélection.</p>
         </div>
     </div>
 
-    <!-- 2. CONTROLS CONTAINER -->
+    <!-- 2. CONTROLS -->
     <!-- CCT CARD -->
     <div id="card-white" class="glass-card w-full max-w-md p-4" onclick="activateType('white')">
         <div class="flex items-center gap-3 mb-3">
@@ -128,9 +129,7 @@
                 </div>
             </div>
         </div>
-        
         <input type="range" min="0" max="100" value="50" class="cct-slider" oninput="updateCCT(this.value)">
-        
         <div class="flex items-center gap-3 mt-3 bg-gray-900/30 p-2 rounded-lg">
             <i class="fa-solid fa-lightbulb text-gray-500 text-xs"></i>
             <input type="range" min="0" max="255" id="bri-white" class="w-full h-1 bg-gray-600 rounded cursor-pointer" onchange="updateBri('white', this.value)">
@@ -148,11 +147,9 @@
                 </div>
             </div>
         </div>
-
         <div class="iro-container">
             <div id="rgb-picker"></div>
         </div>
-
         <div class="flex items-center gap-3 mt-3 bg-gray-900/30 p-2 rounded-lg">
             <i class="fa-solid fa-layer-group text-gray-500 text-xs"></i>
             <input type="range" min="0" max="255" id="bri-rgb" class="w-full h-1 bg-gray-600 rounded cursor-pointer" onchange="updateBri('rgb', this.value)">
@@ -166,7 +163,7 @@
         </button>
     </div>
 
-    <!-- TOAST NOTIFICATION -->
+    <!-- TOAST -->
     <div id="toast" class="fixed top-5 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-full text-xs shadow-xl opacity-0 transition-opacity pointer-events-none z-50">
         Action effectuée
     </div>
@@ -174,11 +171,11 @@
     <script>
         // --- CONFIGURATION ---
         const TOTAL_ZONES = 60;
+        const MAX_WLED_SEGMENTS = 32; // Limite de sécurité pour ESP32
         let zoneState = new Array(TOTAL_ZONES).fill(false);
-        let maxSegmentId = 0; // Pour savoir combien de segments on a créés
+        let activeSegmentCount = 0; // Compteur global des segments actifs
 
         // --- 1. ZONE MANAGER ---
-        
         function initGrid() {
             const grid = document.getElementById('zone-grid');
             grid.innerHTML = '';
@@ -212,12 +209,12 @@
             chev.style.transform = content.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';
         }
 
-        // --- 2. LOGIQUE SEGMENTS (Le Cerveau) ---
+        // --- 2. LOGIQUE SEGMENTS (CORRIGÉE : NETTOYAGE TOTAL) ---
 
         async function applyZones() {
-            showToast("Calcul et envoi des segments...");
+            showToast("Réinitialisation et application...");
             
-            // 1. Trouver les groupes contigus
+            // 1. Calculer les nouveaux groupes
             let groups = [];
             let start = -1;
             for(let i=0; i<TOTAL_ZONES; i++) {
@@ -229,78 +226,74 @@
             }
             if(start !== -1) groups.push({start, stop: TOTAL_ZONES});
 
-            // 2. Construire le JSON WLED
-            // On commence par effacer tous les segments existants (reset)
-            // WLED permet ça en envoyant un segment ID:0 avec stop:0, mais c'est risqué.
-            // Mieux : On écrase les segments ID 0 à X.
-            
-            let segments = [];
-            let id = 0;
+            // 2. Construire la liste COMPLETE (Nettoyage inclus)
+            let segmentsPayload = [];
+            let currentId = 0;
 
-            if(groups.length === 0) {
-                // Tout éteindre si aucune zone
-                segments.push({"id": 0, "stop": 0}); 
-            } else {
+            if(groups.length > 0) {
                 groups.forEach(g => {
-                    // Création Segment RGB (Pair)
-                    segments.push({
-                        "id": id++,
+                    // Limite de sécurité pour ne pas planter l'ESP
+                    if(currentId >= MAX_WLED_SEGMENTS - 2) return; 
+
+                    // Segment RGB
+                    segmentsPayload.push({
+                        "id": currentId++,
                         "start": g.start * 2,
                         "stop": g.stop * 2,
                         "grp": 1, "spc": 1, "of": 0, "on": true,
                         "n": `Z${g.start}-RGB`
                     });
-                    // Création Segment WHITE (Impair)
-                    segments.push({
-                        "id": id++,
+                    // Segment Blanc
+                    segmentsPayload.push({
+                        "id": currentId++,
                         "start": (g.start * 2) + 1,
                         "stop": (g.stop * 2) + 1,
                         "grp": 1, "spc": 1, "of": 0, "on": true,
                         "n": `Z${g.start}-W`
                     });
                 });
+            } else {
+                // Si aucune zone, on garde segment 0 mais à taille 0 pour "tout éteindre" proprement
+                segmentsPayload.push({"id": 0, "stop": 0, "on": false});
+                currentId = 1;
             }
-            
-            maxSegmentId = id; // On retient combien on en a (ex: 4 segments pour 2 zones)
+
+            // --- LE CORRECTIF CRITIQUE ---
+            // On remplit le reste des slots jusqu'à 32 avec des commandes de suppression ("stop": 0)
+            // Cela garantit que les vieux segments sont effacés de la mémoire de WLED.
+            for (let i = currentId; i < MAX_WLED_SEGMENTS; i++) {
+                segmentsPayload.push({ "id": i, "stop": 0, "on": false });
+            }
+
+            activeSegmentCount = currentId; // Mémorise combien de vrais segments on a
 
             // Envoi API
-            await wledApi({ "seg": segments });
+            await wledApi({ "seg": segmentsPayload });
             
-            // On force une couleur par défaut pour vérifier que ça marche
-            // wledApi({ "seg": [{"id":0, "on":true}, {"id":1, "on":true}] }); 
-            
-            showToast("Configuration appliquée !");
+            showToast("Configuration Zones Terminée !");
         }
 
 
-        // --- 3. LOGIQUE DE CONTROLE (Fusion/Exclusion) ---
+        // --- 3. LOGIQUE DE CONTROLE ---
 
         function isFusion() { return document.getElementById('fusion-toggle').checked; }
 
-        // Génère la liste des segments à modifier
-        // type = 'rgb' (Pairs: 0, 2...) ou 'white' (Impairs: 1, 3...)
         function getTargetSegments(type, forceOn = false) {
             let targets = [];
-            
-            // On parcourt tous les segments connus (maxSegmentId)
-            // Si on ne connait pas maxSegmentId (reload page), on assume jusqu'à 16 par sécurité
-            const limit = (maxSegmentId > 0) ? maxSegmentId : 16; 
+            // On itère seulement sur les segments qu'on sait actifs
+            // Ou jusqu'à une limite raisonnable si le compteur est vide (après refresh page)
+            const limit = (activeSegmentCount > 0) ? activeSegmentCount : 16; 
 
             for(let i=0; i < limit; i++) {
-                // Logique RGB vs White
-                const isWhiteSeg = (i % 2 !== 0); // 1, 3, 5 = White
-                const isRgbSeg = (i % 2 === 0);   // 0, 2, 4 = RGB
+                const isWhiteSeg = (i % 2 !== 0);
+                const isRgbSeg = (i % 2 === 0);
                 
-                // CIBLE PRINCIPALE (celle qu'on veut contrôler)
                 if ( (type === 'white' && isWhiteSeg) || (type === 'rgb' && isRgbSeg) ) {
                     let segObj = { "id": i };
                     if(forceOn) segObj.on = true;
                     targets.push(segObj);
                 }
-                
-                // CIBLE SECONDAIRE (celle qu'on doit peut-être éteindre)
                 else if (!isFusion()) {
-                    // Mode Exclusif : On éteint l'autre type
                     targets.push({ "id": i, "on": false });
                 }
             }
@@ -309,7 +302,6 @@
 
         function activateType(type) {
             updateVisuals(type);
-            // On allume juste les segments concernés sans changer la couleur
             const segs = getTargetSegments(type, true);
             wledApi({ "seg": segs });
         }
@@ -322,24 +314,16 @@
             if(p <= 50) { r=255; g=Math.floor((p/50)*255); }
             else { g=255; r=Math.floor(255-((p-50)/50)*255); }
 
-            // Récupère les segments blancs (+ éteint les RGB si exclusif)
             let segs = getTargetSegments('white', true);
-            
-            // Ajoute la couleur aux segments blancs
-            segs.forEach(s => {
-                if(s.on !== false) s.col = [[r,g,b]];
-            });
+            segs.forEach(s => { if(s.on !== false) s.col = [[r,g,b]]; });
 
             clearTimeout(cctTimer);
             cctTimer = setTimeout(() => wledApi({"seg": segs}), 50);
         }
 
         function updateBri(type, val) {
-            let segs = getTargetSegments(type, false); // false = ne force pas ON, change juste bri
-            segs.forEach(s => {
-                 // On applique la bri seulement si on ne l'éteint pas
-                 if(s.on !== false) s.bri = parseInt(val);
-            });
+            let segs = getTargetSegments(type, false);
+            segs.forEach(s => { if(s.on !== false) s.bri = parseInt(val); });
             wledApi({"seg": segs});
         }
 
@@ -352,15 +336,11 @@
         rgbPicker.on('input:end', (c) => {
             const {r,g,b} = c.rgb;
             let segs = getTargetSegments('rgb', true);
-            segs.forEach(s => {
-                if(s.on !== false) s.col = [[r,g,b]];
-            });
+            segs.forEach(s => { if(s.on !== false) s.col = [[r,g,b]]; });
             wledApi({"seg": segs});
         });
 
-
         // --- UI & SYSTEM ---
-
         function updateVisuals(activeType) {
             const cardW = document.getElementById('card-white');
             const cardR = document.getElementById('card-rgb');
@@ -395,7 +375,6 @@
                 });
                 const json = await res.json();
                 
-                // Feedback Master
                 const btn = document.getElementById('master-btn');
                 if(json.on) {
                     btn.classList.add('border-green-500', 'text-green-500');
@@ -419,7 +398,7 @@
         const savedIp = localStorage.getItem('wled_ip');
         if(savedIp) {
             document.getElementById('wled-ip').value = savedIp;
-            wledApi({}); // Check status
+            wledApi({}); 
         }
         document.getElementById('wled-ip').addEventListener('input', (e) => localStorage.setItem('wled_ip', e.target.value));
 
