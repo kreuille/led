@@ -2,197 +2,473 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WLED Command Center</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WLED V39 Standalone</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@jaames/iro@5"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
-        body { background-color: #1a1a1a; color: #e0e0e0; font-family: 'Segoe UI', system-ui, sans-serif; }
-        .slider-thumb::-webkit-slider-thumb { appearance: none; width: 20px; height: 20px; background: #3b82f6; border-radius: 50%; cursor: pointer; }
-        .glass-panel { background: rgba(40, 40, 40, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
-        .btn-preset { transition: all 0.2s; }
-        .btn-preset:active { transform: scale(0.95); }
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', system-ui, sans-serif; overscroll-behavior: none; user-select: none; padding-bottom: 120px; }
+        
+        .zone-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; margin-bottom: 10px; }
+        .zone-block { aspect-ratio: 1; background-color: #334155; border-radius: 2px; cursor: pointer; position: relative; }
+        .zone-block.active { background-color: #3b82f6; box-shadow: 0 0 5px rgba(59, 130, 246, 0.5); border: 1px solid #93c5fd; }
+        .zone-label { position: absolute; bottom: 0px; right: 1px; font-size: 5px; color: rgba(255,255,255,0.4); }
+        
+        .glass-card { background: rgba(30, 41, 59, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 20px; transition: all 0.3s ease; }
+        .glass-card.inactive-mode { opacity: 0.5; filter: grayscale(0.8); border: 1px solid transparent; }
+        .glass-card.active-mode { border-color: rgba(59, 130, 246, 0.6); background: rgba(30, 41, 59, 0.95); box-shadow: 0 0 15px rgba(59, 130, 246, 0.1); }
+        
+        /* Sliders Custom */
+        input[type=range].cct-slider { -webkit-appearance: none; width: 100%; height: 24px; border-radius: 12px; background: linear-gradient(to right, #ff8c00 0%, #ffebcd 45%, #ffffff 50%, #e0ffff 55%, #a0c4ff 100%); outline: none; margin-top: 5px; }
+        input[type=range].cct-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 30px; height: 30px; border-radius: 50%; background: #fff; border: 3px solid #1e293b; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
+        input[type=range].std-slider { -webkit-appearance: none; width: 100%; height: 6px; border-radius: 3px; background: #475569; outline: none; }
+        input[type=range].std-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #fff; cursor: pointer; }
+        input[type=range].master-slider { -webkit-appearance: none; width: 100%; height: 12px; border-radius: 6px; background: linear-gradient(90deg, #1e293b 0%, #fbbf24 100%); outline: none; }
+        input[type=range].master-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px rgba(251, 191, 36, 0.5); cursor: pointer; margin-top: -6px; } 
+
+        .toggle-checkbox:checked { right: 0; border-color: #3b82f6; }
+        .toggle-checkbox:checked + .toggle-label { background-color: #3b82f6; }
+        .iro-container { display: flex; justify-content: center; margin-top: 5px; }
+        
+        .fx-btn { text-align: left; padding: 8px 12px; font-size: 0.75rem; border-radius: 6px; background: rgba(255,255,255,0.05); margin-bottom: 4px; transition: 0.2s; border: 1px solid transparent; }
+        .fx-btn:hover { background: rgba(255,255,255,0.1); }
+        .fx-btn.selected { background: #2563eb; color: white; border-color: #60a5fa; font-weight: bold; }
+        
+        .preset-btn { position: relative; overflow: hidden; transition: all 0.2s; }
+        .preset-btn:active { transform: scale(0.95); }
+        .rec-mode .preset-btn-slot { border-color: #ef4444 !important; color: #fca5a5 !important; animation: pulse 1.5s infinite; }
+        .rec-mode .preset-btn-save { background-color: #ef4444 !important; color: white !important; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+        
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; transition: all 0.3s ease; }
+        .status-online { background-color: #22c55e; box-shadow: 0 0 8px #22c55e; }
+        .status-offline { background-color: #ef4444; box-shadow: 0 0 0px #ef4444; opacity: 0.5; }
+        .status-busy { background-color: #eab308; animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite; }
     </style>
 </head>
-<body class="min-h-screen flex items-center justify-center p-4">
+<body class="min-h-screen p-3 flex flex-col items-center gap-4">
 
-    <!-- Main Controller Container -->
-    <div class="glass-panel w-full max-w-md rounded-2xl shadow-2xl overflow-hidden p-6 space-y-6">
-        
-        <!-- Header & Connection Status -->
-        <div class="flex justify-between items-center border-b border-gray-700 pb-4">
-            <div>
-                <h1 class="text-2xl font-bold text-white tracking-tight">Salon <span class="text-blue-500">Light</span></h1>
-                <p class="text-xs text-gray-400">Contrôle Hybride RGB + White</p>
+    <!-- HEADER & STATUS -->
+    <div class="w-full max-w-md space-y-3">
+        <div class="flex justify-between items-center px-1">
+            <div class="flex items-center gap-2">
+                <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
+                    WLED <span class="text-gray-500 font-light text-sm">Standalone</span>
+                </h1>
+                <div id="status-dot" class="status-dot status-offline" title="Statut Connexion"></div>
             </div>
-            <div id="status-indicator" class="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]"></div>
-        </div>
-
-        <!-- Master Controls -->
-        <div class="space-y-4">
-            <div class="flex justify-between items-center">
-                <span class="font-medium text-gray-300">Alimentation Maître</span>
-                <button onclick="togglePower()" id="power-btn" class="w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center text-xl hover:bg-gray-600 transition shadow-lg">
-                    <i class="fa-solid fa-power-off"></i>
-                </button>
-            </div>
-
-            <div>
-                <label class="text-xs text-gray-400 uppercase font-bold tracking-wider">Luminosité Globale</label>
-                <input type="range" min="0" max="255" id="master-bri" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer mt-2" onchange="setBrightness(this.value)">
+            
+            <div class="flex items-center gap-2">
+                <input type="text" id="wled-ip" onchange="updateLocalIP(this.value)" class="bg-gray-800/50 rounded px-2 py-1 text-[10px] text-gray-500 w-24 text-center border border-transparent hover:border-gray-600 focus:text-white transition-colors" placeholder="192.168.x.x">
+                <i class="fa-solid fa-save text-[10px] text-gray-600" id="sync-icon" title="Stockage Local"></i>
             </div>
         </div>
 
-        <!-- Dual Channel Control -->
-        <div class="grid grid-cols-2 gap-4">
-            <!-- Channel RGB -->
-            <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-sm font-bold text-blue-400"><i class="fa-solid fa-palette mr-2"></i>RGB</span>
-                    <input type="color" id="color-picker" class="w-8 h-8 rounded cursor-pointer bg-transparent border-0" onchange="setSegmentColor(0, this.value)">
-                </div>
-                <label class="text-xs text-gray-500">Intensité Segment 0</label>
-                <input type="range" min="0" max="255" class="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer mt-2" onchange="setSegmentBrightness(0, this.value)">
+        <!-- MASTER BRIGHTNESS -->
+        <div class="bg-gray-900/50 p-3 rounded-xl border border-gray-800">
+            <div class="flex justify-between text-[10px] text-gray-400 mb-1 font-bold">
+                <span>MASTER LUMINOSITÉ</span>
+                <span id="master-bri-val">--%</span>
             </div>
-
-            <!-- Channel White -->
-            <div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-sm font-bold text-yellow-200"><i class="fa-regular fa-sun mr-2"></i>Blanc</span>
-                    <!-- White toggle/indicator -->
-                    <div class="w-3 h-3 bg-yellow-100 rounded-full shadow-[0_0_10px_yellow]"></div>
-                </div>
-                <label class="text-xs text-gray-500">Intensité Segment 1</label>
-                <input type="range" min="0" max="255" class="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer mt-2" onchange="setSegmentBrightness(1, this.value)">
-            </div>
+            <input type="range" min="0" max="255" id="master-bri" class="master-slider" oninput="updateMasterBri(this.value)">
         </div>
 
-        <!-- Quick Presets -->
-        <div>
-            <label class="text-xs text-gray-400 uppercase font-bold tracking-wider mb-3 block">Scènes Rapides</label>
-            <div class="grid grid-cols-3 gap-3">
-                <button onclick="loadPreset(1)" class="btn-preset bg-gradient-to-br from-indigo-600 to-blue-700 py-3 rounded-lg text-sm font-medium shadow-lg text-white">
-                    <i class="fa-solid fa-tv block mb-1"></i> TV
-                </button>
-                <button onclick="loadPreset(2)" class="btn-preset bg-gradient-to-br from-orange-500 to-yellow-600 py-3 rounded-lg text-sm font-medium shadow-lg text-white">
-                    <i class="fa-solid fa-book-open block mb-1"></i> Lecture
-                </button>
-                <button onclick="loadPreset(3)" class="btn-preset bg-gradient-to-br from-pink-600 to-purple-700 py-3 rounded-lg text-sm font-medium shadow-lg text-white">
-                    <i class="fa-solid fa-glass-martini-alt block mb-1"></i> Soirée
-                </button>
-            </div>
-            <div class="grid grid-cols-2 gap-3 mt-3">
-                 <button onclick="setSegmentBrightness(1, 255); setSegmentBrightness(0, 0);" class="btn-preset bg-gray-700 py-2 rounded-lg text-xs font-bold border border-gray-600">
-                    FULL WHITE
-                </button>
-                <button onclick="setSegmentBrightness(1, 0); setSegmentBrightness(0, 255);" class="btn-preset bg-gray-700 py-2 rounded-lg text-xs font-bold border border-gray-600">
-                    FULL RGB
-                </button>
+        <!-- PRESETS BAR -->
+        <div id="preset-bar" class="grid grid-cols-5 gap-2">
+            <button class="preset-btn preset-btn-slot bg-gray-800 hover:bg-gray-700 text-gray-300 py-3 rounded-xl shadow-lg border border-gray-700 flex flex-col items-center justify-center gap-1" onclick="handlePresetClick(1)"><i class="fa-solid fa-1 text-xs"></i></button>
+            <button class="preset-btn preset-btn-slot bg-gray-800 hover:bg-gray-700 text-gray-300 py-3 rounded-xl shadow-lg border border-gray-700 flex flex-col items-center justify-center gap-1" onclick="handlePresetClick(2)"><i class="fa-solid fa-2 text-xs"></i></button>
+            <button class="preset-btn preset-btn-slot bg-gray-800 hover:bg-gray-700 text-gray-300 py-3 rounded-xl shadow-lg border border-gray-700 flex flex-col items-center justify-center gap-1" onclick="handlePresetClick(3)"><i class="fa-solid fa-3 text-xs"></i></button>
+            <button class="preset-btn preset-btn-slot bg-gray-800 hover:bg-gray-700 text-gray-300 py-3 rounded-xl shadow-lg border border-gray-700 flex flex-col items-center justify-center gap-1" onclick="handlePresetClick(4)"><i class="fa-solid fa-4 text-xs"></i></button>
+            <button id="btn-rec" class="preset-btn preset-btn-save bg-blue-900/40 hover:bg-blue-800/40 text-blue-300 py-3 rounded-xl shadow-lg border border-blue-800/50 flex flex-col items-center justify-center gap-1" onclick="toggleRecMode()"><i class="fa-solid fa-floppy-disk text-xs"></i></button>
+        </div>
+        <p id="preset-hint" class="text-[9px] text-center text-gray-600 transition-colors">Clic sur numéro = Charger • Disquette = Mode Enregistrement</p>
+
+        <!-- FUSION -->
+        <div class="flex items-center justify-between bg-gray-800/50 rounded-xl p-2 px-3 border border-white/5">
+            <span class="text-xs text-gray-300 flex items-center gap-2"><i class="fa-solid fa-link"></i> Mode Fusion (Mix)</span>
+            <div class="relative inline-block w-8 align-middle select-none">
+                <input type="checkbox" id="fusion-toggle" class="toggle-checkbox absolute block w-4 h-4 rounded-full bg-white border-4 appearance-none cursor-pointer transition-all duration-300 ease-in-out left-0 top-0"/>
+                <label for="fusion-toggle" class="toggle-label block overflow-hidden h-4 rounded-full bg-gray-700 cursor-pointer"></label>
             </div>
         </div>
-
-        <!-- Technical Footer -->
-        <div class="text-center pt-2">
-            <p class="text-[10px] text-gray-600">API Latency: <span id="latency">--</span>ms • WLED v0.14.4</p>
-            <input type="text" id="ip-address" value="192.168.1.50" class="mt-2 bg-transparent text-center text-gray-600 text-xs border-b border-gray-700 focus:outline-none focus:border-blue-500" placeholder="IP WLED">
-        </div>
-
     </div>
 
-    <script>
-        // CONFIGURATION
-        // Remplacer par l'IP de votre ESP32 si statique, ou utiliser le champ input
-        let wledIp = document.getElementById('ip-address').value;
+    <!-- ZONES (97) -->
+    <div class="glass-card w-full max-w-md p-4">
+        <div class="flex justify-between items-center mb-2 cursor-pointer" onclick="toggleZonePanel()">
+            <h2 class="text-xs font-bold uppercase text-gray-400 tracking-wider"><i class="fa-solid fa-ruler-horizontal mr-1"></i>Zones (97)</h2>
+            <div class="flex items-center gap-2">
+                <span id="seg-count" class="text-[9px] text-gray-500 font-mono">0 segs</span>
+                <i class="fa-solid fa-chevron-down text-gray-500 text-xs transition-transform" id="zone-chevron"></i>
+            </div>
+        </div>
+        <div id="zone-content" class="hidden">
+            <div class="flex justify-end gap-2 mb-2 text-[10px]">
+                <button onclick="zonesSelectAll(true)" class="text-blue-400">Tout</button>
+                <button onclick="zonesSelectAll(false)" class="text-gray-400">Rien</button>
+                <button onclick="patternOneOfTwo()" class="text-purple-400">1/2</button>
+            </div>
+            <div class="max-h-60 overflow-y-auto pr-1"><div id="zone-grid" class="zone-grid"></div></div>
+            <button onclick="applyZones()" class="w-full mt-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-3 rounded shadow-lg transition-colors border border-blue-400/30">
+                <i class="fa-solid fa-rotate-right mr-1"></i> APPLIQUER LA SÉLECTION
+            </button>
+        </div>
+    </div>
 
-        // Fonction utilitaire pour appeler l'API JSON
-        async function wledApi(data) {
-            wledIp = document.getElementById('ip-address').value;
-            const start = Date.now();
-            try {
-                const response = await fetch(`http://${wledIp}/json/state`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-                const json = await response.json();
-                updateUI(json);
-                
-                // Calcul latence
-                const latency = Date.now() - start;
-                document.getElementById('latency').innerText = latency;
-                document.getElementById('status-indicator').className = "w-3 h-3 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]";
-                
-                return json;
-            } catch (error) {
-                console.error("Erreur WLED:", error);
-                document.getElementById('status-indicator').className = "w-3 h-3 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]";
+    <!-- 1. WHITE CARD -->
+    <div id="card-white" class="glass-card w-full max-w-md p-4" onclick="activateType('white')">
+        <div class="flex items-center gap-3 mb-3">
+            <div class="w-8 h-8 rounded-full bg-orange-500/20 flex items-center justify-center text-orange-200"><i class="fa-regular fa-sun"></i></div>
+            <div class="flex-1">
+                <h3 class="font-bold text-gray-200 text-sm">Canal Blanc</h3>
+            </div>
+        </div>
+        <div class="flex justify-between text-[9px] text-gray-400 uppercase tracking-widest px-1"><span>Chaud</span><span>Froid</span></div>
+        <input type="range" min="0" max="100" value="50" class="cct-slider" id="cct-slider-input" oninput="updateCCT(this.value)">
+        <!-- BRI INDEPENDANT -->
+        <div class="flex items-center gap-3 mt-3 bg-gray-900/30 p-2 rounded-lg"><i class="fa-solid fa-lightbulb text-gray-500 text-xs"></i><input type="range" min="0" max="255" id="bri-white" class="std-slider" oninput="updateBri('white', this.value)"></div>
+    </div>
+
+    <!-- 2. RGB CARD -->
+    <div id="card-rgb" class="glass-card w-full max-w-md p-4" onclick="activateType('rgb')">
+        <div class="flex items-center gap-3 mb-1">
+            <div class="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-300"><i class="fa-solid fa-palette"></i></div>
+            <div class="flex-1"><h3 class="font-bold text-gray-200 text-sm">Couleur</h3></div>
+        </div>
+        <div class="iro-container"><div id="rgb-picker"></div></div>
+        <!-- BRI INDEPENDANT -->
+        <div class="flex items-center gap-3 mt-3 bg-gray-900/30 p-2 rounded-lg"><i class="fa-solid fa-layer-group text-gray-500 text-xs"></i><input type="range" min="0" max="255" id="bri-rgb" class="std-slider" oninput="updateBri('rgb', this.value)"></div>
+    </div>
+
+    <!-- 3. FX CARD -->
+    <div id="card-fx" class="glass-card w-full max-w-md p-4" onclick="activateType('fx')">
+        <div class="flex items-center gap-3 mb-3">
+            <div class="w-8 h-8 rounded-full bg-pink-500/20 flex items-center justify-center text-pink-300"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+            <div class="flex-1"><h3 class="font-bold text-gray-200 text-sm">Effets</h3><p class="text-[10px] text-gray-500">Sur mode actif</p></div>
+        </div>
+        <div class="relative mb-3">
+            <i class="fa-solid fa-search absolute left-3 top-2 text-gray-500 text-xs"></i>
+            <input type="text" id="fx-search" placeholder="Rechercher..." class="w-full bg-gray-800/50 border border-gray-600 rounded-lg py-1 pl-8 pr-2 text-xs text-white focus:border-blue-500 outline-none" onkeyup="filterEffects(this.value)">
+        </div>
+        <div id="fx-list" class="h-32 overflow-y-auto pr-1 mb-4 custom-scroll flex flex-col gap-1">
+            <div class="text-center text-xs text-gray-500 py-4">Chargement...</div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+            <div class="bg-gray-900/30 p-2 rounded-lg"><label class="text-[9px] text-gray-400 uppercase font-bold">Vitesse</label><input type="range" min="0" max="255" value="128" class="std-slider w-full mt-1" onchange="updateFXParam('sx', this.value)"></div>
+            <div class="bg-gray-900/30 p-2 rounded-lg"><label class="text-[9px] text-gray-400 uppercase font-bold">Intensité</label><input type="range" min="0" max="255" value="128" class="std-slider w-full mt-1" onchange="updateFXParam('ix', this.value)"></div>
+        </div>
+    </div>
+
+    <!-- MASTER BUTTON -->
+    <div class="fixed bottom-6 z-20">
+        <button onclick="sendThrottled({on:'t'}, 0)" id="master-btn" class="w-16 h-16 rounded-full shadow-2xl flex items-center justify-center transition-all active:scale-95 border-4 border-gray-700 bg-gray-700 text-gray-400">
+            <i class="fa-solid fa-power-off text-2xl"></i>
+        </button>
+    </div>
+    
+    <div id="toast" class="fixed top-5 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-full text-xs shadow-xl opacity-0 transition-opacity pointer-events-none z-50">Action effectuée</div>
+
+    <script>
+        const TOTAL_ZONES = 97;
+        const TOTAL_LEDS = TOTAL_ZONES * 2; 
+        const MAX_WLED_SEGMENTS = 32;
+        
+        let zoneState = new Array(TOTAL_ZONES).fill(false);
+        let activeSegmentCount = 0;
+        let currentWledIP = ""; 
+        let allEffects = [];
+        let isRecMode = false;
+        let lastActiveTab = 'rgb'; 
+        let currentColors = { r:255, g:255, b:255, wr:255, wg:150, wb:0 };
+
+        function showToast(msg) { 
+            const t = document.getElementById('toast'); t.innerText = msg; t.style.opacity = 1; setTimeout(()=>t.style.opacity=0, 2000); 
+        }
+
+        // --- THROTTLE SYSTEM ---
+        let debounceTimer = null;
+        function sendThrottled(payload, delay=300) {
+            if(debounceTimer) clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => sendApi(payload), delay);
+        }
+
+        // --- STATUS LOGIC ---
+        function setConnectionStatus(status) {
+            const dot = document.getElementById('status-dot');
+            const btn = document.getElementById('master-btn');
+            
+            if(status === 'online') {
+                dot.className = "status-dot status-online";
+            } else if(status === 'offline') {
+                dot.className = "status-dot status-offline";
+                btn.className = "w-16 h-16 rounded-full shadow-2xl flex items-center justify-center border-4 border-gray-600 bg-gray-800 text-gray-500";
+            } else if(status === 'busy') { dot.className = "status-dot status-busy"; }
+        }
+
+        // --- PRESETS ---
+        function toggleRecMode() {
+            isRecMode = !isRecMode;
+            document.getElementById('preset-bar').classList.toggle('rec-mode', isRecMode);
+            document.getElementById('preset-hint').innerHTML = isRecMode ? "<span class='text-red-400 font-bold'>MODE ENREGISTREMENT ACTIVÉ !</span>" : "Clic sur numéro = Charger • Disquette = Mode Enregistrement";
+        }
+        async function handlePresetClick(id) {
+            if(isRecMode) {
+                showToast(`Sauvegarde en Mém. ${id}...`); await sendApi({ "psave": id }); showToast(`✅ Sauvegardé !`); toggleRecMode();
+            } else {
+                showToast(`Chargement Mém. ${id}...`); await sendApi({ "ps": id }); setTimeout(fetchAndSyncState, 1000);
             }
         }
 
-        // Mettre à jour l'UI avec l'état actuel
-        function updateUI(state) {
-            // Master ON/OFF
-            const pwrBtn = document.getElementById('power-btn');
-            if(state.on) {
-                pwrBtn.classList.add('text-green-400', 'bg-gray-700');
-                pwrBtn.classList.remove('text-gray-400');
+        // --- CORE LOGIC (V39 RESTORED) ---
+        async function applyZones() {
+            if(!currentWledIP) return showToast("Pas d'IP");
+            showToast("Configuration...");
+            setConnectionStatus('busy');
+
+            let groups = [], start = -1;
+            for(let i=0; i<TOTAL_ZONES; i++) { 
+                if(zoneState[i] && start===-1) start=i; 
+                else if(!zoneState[i] && start!==-1) { groups.push({s:start, e:i}); start=-1; } 
+            }
+            if(start!==-1) groups.push({s:start, e:TOTAL_ZONES});
+
+            // LIMITE 15 GROUPES MAX (30 Segments)
+            // Sinon on bascule en mode masque (2 segments)
+            let isMaskMode = false;
+            if(groups.length > 15) {
+                showToast("Mode Masque (>15 grp)");
+                isMaskMode = true;
+            }
+
+            if(isMaskMode) {
+                // 1. Reset Segments (2 segments géants)
+                await sendApi({ "seg": [
+                    { "id":0, "start":0, "stop":TOTAL_LEDS, "grp":1, "spc":1, "of":0, "on":true, "fx":0, "n":"RGB" },
+                    { "id":1, "start":1, "stop":TOTAL_LEDS, "grp":1, "spc":1, "of":0, "on":true, "fx":0, "n":"White" }
+                ]});
+                let clearSegs = []; for(let i=2; i<MAX_WLED_SEGMENTS; i++) clearSegs.push({"id":i, "stop":0});
+                await sendApi({ "seg": clearSegs });
+                
+                await new Promise(r => setTimeout(r, 400));
+    
+                // 2. Build Mask
+                let maskPixels = [];
+                for(let z=0; z<TOTAL_ZONES; z++) {
+                    if(!zoneState[z]) { maskPixels.push(z); maskPixels.push([0,0,0]); }
+                }
+    
+                // 3. Batch Send Mask
+                const CHUNK_SIZE = 40; 
+                if(maskPixels.length > 0) {
+                    for(let i=0; i<maskPixels.length; i+=CHUNK_SIZE) {
+                        const chunk = maskPixels.slice(i, i+CHUNK_SIZE);
+                        await sendApi({ "seg": [{ "id": 0, "i": chunk }, { "id": 1, "i": chunk }] });
+                        await new Promise(r => setTimeout(r, 150));
+                    }
+                }
+                activeSegmentCount = 2;
+
             } else {
-                pwrBtn.classList.remove('text-green-400', 'bg-gray-700');
-                pwrBtn.classList.add('text-gray-400');
+                // Mode Standard (Vrais Segments)
+                let pl = [], id = 0;
+                groups.forEach(g => {
+                    pl.push({ "id": id++, "start": g.s*2, "stop": g.e*2, "grp":1, "spc":1, "of":0, "on":true, "fx":0, "n":`Z${g.s}-RGB` });
+                    pl.push({ "id": id++, "start": g.s*2+1, "stop": g.e*2+1, "grp":1, "spc":1, "of":0, "on":true, "fx":0, "n":`Z${g.s}-W` });
+                });
+                for(let i=id; i<MAX_WLED_SEGMENTS; i++) pl.push({"id":i, "stop":0});
+                activeSegmentCount = id;
+                await sendApi({"seg": pl}); 
             }
             
-            // Master Brightness
-            document.getElementById('master-bri').value = state.bri;
+            // 4. Restore colors
+            setTimeout(() => {
+                let colPl = [];
+                for(let i=0; i<activeSegmentCount; i++) {
+                    if(i%2===0) colPl.push({"id":i, "col":[[currentColors.r, currentColors.g, currentColors.b]]});
+                    else colPl.push({"id":i, "col":[[currentColors.wr, currentColors.wg, currentColors.wb]]});
+                }
+                if(colPl.length) sendApi({"seg": colPl});
+            }, 300);
 
-            // Segment Specifics (si dispos)
-            if(state.seg && state.seg.length > 1) {
-                // Supposons Seg 0 = RGB, Seg 1 = White (Brightness only)
-                // Note: WLED retourne 'bri' par segment s'il est setté
+            showToast("Terminé !");
+            setConnectionStatus('online');
+            setTimeout(fetchAndSyncState, 1000);
+        }
+
+        // --- CONTROLS ---
+        function activateType(t) { 
+            updateVisuals(t); 
+            if(t!=='fx') {
+                lastActiveTab = t;
+                const fusion = document.getElementById('fusion-toggle').checked;
+                let pl = [];
+                for(let i=0; i<activeSegmentCount; i++) {
+                    const w = (i%2!==0);
+                    let st = false;
+                    if(fusion) st = true;
+                    else if(t==='white') st = w;
+                    else if(t==='rgb' || t==='fx') st = !w;
+                    pl.push({"id":i, "on":st});
+                }
+                if(pl.length) sendThrottled({"seg": pl}, 150);
             }
         }
 
-        // COMMANDES
-        function togglePower() {
-            wledApi({ "on": "t" });
+        let cctTimer;
+        function updateCCT(v) {
+            let r,g,b=0, p=parseInt(v);
+            if(p<=50) { g=255; r=Math.floor((p/50)*255); } else { r=255; g=Math.floor(255-((p-50)/50)*255); }
+            currentColors.wr=r; currentColors.wg=g; currentColors.wb=b; 
+            
+            if(window.cctTimer) clearTimeout(window.cctTimer);
+            window.cctTimer = setTimeout(() => {
+                let s = [];
+                for(let i=1; i<activeSegmentCount; i+=2) s.push({"id":i, "col":[[r,g,b]], "fx":0});
+                sendThrottled({"seg": s}, 200);
+            }, 50); 
         }
 
-        function setBrightness(val) {
-            wledApi({ "bri": parseInt(val) });
+        function updateMasterBri(v) {
+            document.getElementById('master-bri-val').innerText = Math.round(v/2.55) + '%';
+            sendThrottled({ "bri": parseInt(v) }, 200);
         }
 
-        function setSegmentBrightness(segId, val) {
-            // Pour cibler un segment spécifique en JSON API
-            wledApi({ 
-                "seg": [
-                    { "id": segId, "bri": parseInt(val), "on": true } 
-                ]
+        function updateBri(t, v) {
+            // FIX: getTargetSegments logic manually here for speed
+            let s = [];
+            for(let i=0; i<activeSegmentCount; i++) {
+                const w = (i%2!==0);
+                if((t==='white' && w) || (t==='rgb' && !w)) s.push({"id":i, "bri":parseInt(v)});
+            }
+            if(s.length) sendThrottled({"seg": s}, 200);
+        }
+
+        var rgbPicker = new iro.ColorPicker("#rgb-picker", { width: 220, layout: [{ component: iro.ui.Wheel, options: { wheelLightness: false } }], color: "#8b5cf6" });
+        rgbPicker.on('input:end', (c) => {
+            currentColors.r = c.rgb.r; currentColors.g = c.rgb.g; currentColors.b = c.rgb.b;
+            let s = [];
+            for(let i=0; i<activeSegmentCount; i+=2) s.push({"id":i, "col":[[c.rgb.r,c.rgb.g,c.rgb.b]], "fx":0});
+            sendThrottled({"seg": s}, 200);
+        });
+
+        // --- FX ---
+        async function fetchEffectsList() {
+            if(!currentWledIP) return;
+            try { const res = await fetch(`http://${currentWledIP}/json/effects`); allEffects = await res.json(); renderEffectsList(allEffects); } catch(e){}
+        }
+        function renderEffectsList(list) {
+            const container = document.getElementById('fx-list'); container.innerHTML = '';
+            list.forEach((fxName, index) => {
+                const btn = document.createElement('button'); btn.className = 'fx-btn w-full'; btn.innerText = fxName;
+                btn.onclick = () => setEffect(index, btn); container.appendChild(btn);
             });
         }
-
-        function setSegmentColor(segId, hex) {
-            // Conversion Hex à RGB
-            const r = parseInt(hex.substr(1,2), 16);
-            const g = parseInt(hex.substr(3,2), 16);
-            const b = parseInt(hex.substr(5,2), 16);
-
-            wledApi({ 
-                "seg": [
-                    { "id": segId, "col": [[r, g, b]], "on": true }
-                ]
-            });
+        function filterEffects(q) {
+            const btns = document.getElementById('fx-list').getElementsByTagName('button');
+            for(let b of btns) b.style.display = b.innerText.toLowerCase().includes(q.toLowerCase()) ? "block" : "none";
+        }
+        function setEffect(id, btn) {
+            const all = document.getElementById('fx-list').getElementsByTagName('button');
+            for(let b of all) b.classList.remove('selected'); btn.classList.add('selected');
+            activateType('fx');
+            const fusion = document.getElementById('fusion-toggle').checked;
+            let s = [];
+            for(let i=0; i<activeSegmentCount; i++) {
+                const w = (i%2!==0);
+                if(fusion || (lastActiveTab==='white' && w) || (lastActiveTab==='rgb' && !w)) {
+                    s.push({"id":i, "fx":id});
+                }
+            }
+            if(s.length) sendApi({"seg": s});
+        }
+        function updateFXParam(p, v) {
+            const fusion = document.getElementById('fusion-toggle').checked;
+            let s = [];
+            for(let i=0; i<activeSegmentCount; i++) {
+                const w = (i%2!==0);
+                if(fusion || (lastActiveTab==='white' && w) || (lastActiveTab==='rgb' && !w)) {
+                    s.push({"id":i, [p]:parseInt(v)});
+                }
+            }
+            if(s.length) sendThrottled({"seg": s}, 200);
         }
 
-        function loadPreset(id) {
-            wledApi({ "ps": id });
+        // --- INIT & SYNC ---
+        async function fetchAndSyncState() {
+            if(!currentWledIP) return;
+            try {
+                const res = await fetch(`http://${currentWledIP}/json/state`);
+                const state = await res.json();
+                document.getElementById('master-btn').classList.toggle('border-green-500', state.on);
+                document.getElementById('master-bri').value = state.bri;
+                document.getElementById('master-bri-val').innerText = Math.round(state.bri/2.55) + '%';
+                if(state.seg) activeSegmentCount = state.seg.length;
+            } catch(e) {} 
         }
 
-        // Initial fetch
-        setInterval(() => {
-             // Polling léger pour garder l'état synchro (optionnel)
-             // wledApi({}); 
-        }, 5000);
+        async function initApp() {
+            // Load IP local
+            const localIP = localStorage.getItem('wled_ip');
+            if(localIP) { 
+                currentWledIP = localIP; 
+                document.getElementById('wled-ip').value = currentWledIP; 
+                fetchAndSyncState(); fetchEffectsList();
+            }
+        }
+        async function updateServerIP(val) {
+            currentWledIP = val;
+            localStorage.setItem('wled_ip', val);
+            showToast("IP Enregistrée");
+        }
+
+        function updateVisuals(t) {
+            const cw=document.getElementById('card-white'), cr=document.getElementById('card-rgb'), cf=document.getElementById('card-fx');
+            cw.className=cr.className=cf.className="glass-card w-full max-w-md p-4 inactive-mode";
+            const fusion = document.getElementById('fusion-toggle').checked;
+            if(fusion) { cw.className=cr.className=cf.className="glass-card w-full max-w-md p-4 active-mode"; return; }
+            if(t==='white') cw.className="glass-card w-full max-w-md p-4 active-mode";
+            else if(t==='rgb') cr.className="glass-card w-full max-w-md p-4 active-mode";
+            else if(t==='fx') cf.className="glass-card w-full max-w-md p-4 active-mode"; 
+        }
+
+        function initGrid() {
+            const grid = document.getElementById('zone-grid'); grid.innerHTML = '';
+            for(let i=0; i<TOTAL_ZONES; i++) {
+                let div = document.createElement('div'); div.className = 'zone-block';
+                if((i+1)%10===0) { let lbl = document.createElement('span'); lbl.className = 'zone-label'; lbl.innerText = i+1; div.appendChild(lbl); }
+                div.onclick = () => { zoneState[i] = !zoneState[i]; div.classList.toggle('active'); };
+                grid.appendChild(div);
+            }
+        }
+        function zonesSelectAll(bool) { zoneState.fill(bool); const b = document.getElementById('zone-grid').children; for(let x of b) x.classList.toggle('active', bool); }
+        function patternOneOfTwo() { 
+            for(let i=0; i<TOTAL_ZONES; i++) zoneState[i]=(i%2===0);
+            const b = document.getElementById('zone-grid').children; for(let i=0; i<TOTAL_ZONES; i++) b[i].classList.toggle('active', zoneState[i]);
+        }
+        function toggleZonePanel() { document.getElementById('zone-content').classList.toggle('hidden'); }
+
+        async function sendApi(d) {
+            if(!currentWledIP) return;
+            try { 
+                document.getElementById('status-dot').className = "status-dot status-busy";
+                const res = await fetch(`http://${currentWledIP}/json/state`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(d) }); 
+                const json = await res.json();
+                
+                const btn = document.getElementById('master-btn');
+                if(json.on) {
+                    btn.className = "w-16 h-16 rounded-full shadow-2xl flex items-center justify-center border-4 border-green-400 bg-green-600 text-white hover:scale-105 transition-all";
+                } else {
+                    btn.className = "w-16 h-16 rounded-full shadow-2xl flex items-center justify-center border-4 border-red-400 bg-red-600 text-white hover:scale-105 transition-all";
+                }
+                setConnectionStatus('online');
+            } catch(e){ 
+                setConnectionStatus('offline');
+            }
+        }
+
+        initGrid(); initApp(); 
     </script>
 </body>
 </html>
 
- 
